@@ -6,7 +6,7 @@ in_dir <- args[2]
 out_dir <- args[3]
 
 p_space <- file.path(in_dir, paste0('p_space_', node, '.csv'))
-params <- head(read.csv(p_space), 4)
+params <- read.csv(p_space)
 
 # setup cluster...
 numCores <- detectCores()
@@ -15,8 +15,8 @@ clusterExport(cl, "params")
 
 # set up processing function
 clusterEvalQ(cl, {
-  library(malariasimulation)
-  library(malariaEquilibrium)
+  library(malariasimulation, lib='Q:/R')
+  library(malariaEquilibrium, lib='Q:/R')
   
   seasonality <- list(
     bimodal = list(
