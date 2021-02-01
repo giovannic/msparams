@@ -1,84 +1,100 @@
-args = commandArgs(trailingOnly=TRUE)
-out_dir <- args[1]
 
-p_space = list(
-  human_population = seq(from = 5000, to = 9000, by = 500),
-  average_age = seq(from = 20 * 365, to = 40 * 365, by = 5 * 365),
-  seasonality_profile = c('bimodal', 'high', 'perennial', 'normal'),
-  eir = c(.1, .5, 1, 10, 50, 75, 100),
-  species_12 = seq(from = 0, to = 1, by = .2),
-  species_23 = seq(from = 0, to = 1, by = .2),
-  ft = seq(from = 0, to = 1, by = .2),
-  drug_balance = seq(from = 0, to = 1, by = .2),
-  vaccine_start = seq(from = 0, to = 4) * 365,
-  vaccine_duration = seq(5) * 365,
-  vaccine_frequency = seq(from = .5, to = 2, by = .5) * 365,
-  vaccine_coverage = seq(from = 0, to = 1, by = .2),
-  booster_delay = seq(from = .5, to = 2, by = .5) * 365,
-  booster_coverage = seq(from = 0, to = 1, by = .2),
-  mda_start = seq(from = 0, to = 4) * 365,
-  mda_duration = seq(5) * 365,
-  mda_frequency = seq(from = .5, to = 2, by = .5) * 365,
-  mda_coverage = seq(from = 0, to = 1, by = .2),
-  smc_start = seq(from = 0, to = 4) * 365,
-  smc_duration = seq(5) * 365,
-  smc_frequency = seq(from = .5, to = 2, by = .5) * 365,
-  smc_coverage = seq(from = 0, to = 1, by = .2),
-  net_start = seq(from = 0, to = 4) * 365,
-  net_duration = seq(5) * 365,
-  net_coverage = seq(from = 0, to = 1, by = .2),
-  net_retention = seq(5) * 365,
-  spraying_start = seq(from = 0, to = 4) * 365,
-  spraying_duration = seq(5) * 365,
-  spraying_coverage = seq(from = 0, to = 1, by = .2),
-  rtss_smc_correlated = c(1, 0, -1),
-  rtss_net_correlation = c(1, 0, -1)
-)
+out_dir <- './msparams/p_space_v2/'
 
-p_space = list(
-  human_population = seq(from = 5000, to = 9000, by = 500),
-  average_age = seq(from = 20 * 365, to = 40 * 365, by = 10 * 365),
-  seasonality_profile = c('bimodal', 'high', 'perennial', 'normal'),
-  eir = c(.1, .5, 1, 10, 50, 75, 100),
-  ft = seq(from = 0, to = 1, by = .2),
-  vaccine_frequency = seq(from = .5, to = 1, by = .5) * 365,
-  vaccine_coverage = c(0, .6, .8),
-  smc_frequency = seq(from = .5, to = 1, by = .5) * 365,
-  smc_coverage = c(0, .6, .8),
-  net_frequency = seq(from = .5, to = 1, by = .5) * 365,
-  net_coverage = c(0, .6, .8)
-)
+n_realisations <- 5e+5
 
-# Remove all interventions (except vaccines)
-# Remove boosters
-# Remove species
-# Simple seasonality
-# Remove correlation
-# No repetitions
-
-print('dims')
-print(length(p_space))
-print('dim counts')
-counts <- vapply(p_space, function(s) length(s), numeric(1))
-names(counts) <- names(p_space)
-print(counts)
-print('realisations')
-print(prod(counts))
-print('days')
-runtime <- 1 #mins
+print('runtime (days)')
+runtime <- 4 #mins
 cores <- 8
 nodes <- 32
-print(prod(counts) * runtime / (60 * 24 * cores * nodes))
+print(n_realisations * runtime / (60 * 24 * cores * nodes))
 
-params <- expand.grid(p_space)
+history <- readRDS('./msparams/GTS2020_sites_fitted.RDS')
+seasonality <- do.call(rbind, history$seasonality)
 
-nr <- nrow(params)
-outs <- split(params, rep(1:nodes, each=nodes, length.out=nr))
+vector_profile <- function (r) {
+  props <- r[c('prop_gamb_ss', 'prop_fun', 'prop_arab')]
+  c(
+    Q0 = weighted.mean(r[c('gamb_ss_Q0', 'fun_Q0', 'arab_Q0')], props),
+    rs = weighted.mean(r[c('irs_dif_gamb_ss', 'irs_dif_fun', 'irs_dif_arab')], props), # is this right?
+    phi_bednets = weighted.mean(r[c('gamb_ss_Q_bed', 'fun_Q_bed', 'arab_Q_bed')], props),
+    phi_spraying = weighted.mean(r[c('gamb_ss_Q_in', 'fun_Q_in', 'arab_Q_in')], props)
+  )
+}
 
-for (i in seq_along(outs)) {
-  write.csv(
-    outs[[i]],
-    file.path(out_dir, paste0('p_space_', i, '.csv')),
-    row.names = FALSE
+vector_profiles <- do.call(rbind, lapply(history$vectors, vector_profile))
+
+create_interventions <- function (row) {
+  cbind(row, history$interventions[[row]])
+}
+
+cast_intervention_history <- function(interventions, columns) {
+  do.call(cbind, lapply(columns, function(colname) {
+    wide <- dcast(interventions, row ~ year, value.var=colname, drop=FALSE)
+    wide <- wide[, names(wide) != 'row']
+    colnames(wide) <- paste0(colname, '_', colnames(wide))
+    wide
+  }))
+}
+
+interventions <- do.call(rbind, lapply(seq(nrow(history)), create_interventions))
+
+synthetic_params <- data.frame(
+  average_age = runif(n_realisations, 20 * 365, 40 * 365),
+  ft = runif(n_realisations, 0, 1),
+  prop_act = runif(n_realisations, 0, 1),
+  vaccine_rounds_per_year = sample(seq(from = 0, to = 1), n_realisations, replace = TRUE),
+  mda_rounds_per_year = sample(seq(from = 0, to = 2), n_realisations, replace = TRUE),
+  smc_rounds_per_year = sample(seq(from = 0, to = 2), n_realisations, replace = TRUE),
+  net_rounds_per_year = sample(seq(from = 0, to = 2), n_realisations, replace = TRUE),
+  spraying_rounds_per_year = sample(seq(from = 0, to = 2), n_realisations, replace = TRUE), # one or two (perennial) rounds per year before the peak
+  vaccine_smc_correlation = runif(n_realisations, -1, 1),
+  vaccine_net_correlation = runif(n_realisations, -1, 1),
+  spraying_net_correlation = runif(n_realisations, -1, 1)
+)
+
+node_map <- rep(1:nodes, each=nodes, length.out=n_realisations)
+
+write_out <- function(splits, name) {
+  for (i in seq(nodes)) {
+    write.csv(
+      splits[[i]],
+      file.path(out_dir, paste0('p_space_', name, '_', i, '.csv')),
+      row.names = FALSE
+    )
+  }
+}
+
+sample_nrows <- function(df, n) df[sample(nrow(df), n, replace = TRUE),]
+
+write_out(split(synthetic_params, node_map), 'synthetic')
+write_out(split(sample_nrows(seasonality, n_realisations), node_map), 'season')
+write_out(
+  split(sample_nrows(as.data.frame(vector_profiles), n_realisations), node_map),
+  'vectors'
+)
+
+write_out(
+  split(
+    sample_nrows(
+      data.frame(total_M = history[c('total_M')]),
+      n_realisations
+    ),
+    node_map
+  ),
+  'total_M'
+)
+
+i_names <- c('tx', 'prop_act', 'llin', 'irs', 'irs_rounds', 'smc_rounds', 'rtss')
+for (i_name in i_names) {
+  write_out(
+    split(
+      sample_nrows(
+        cast_intervention_history(interventions, i_name),
+        n_realisations
+      ),
+      node_map
+    ),
+    i_name
   )
 }
