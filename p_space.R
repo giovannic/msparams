@@ -1,5 +1,6 @@
+library(reshape2)
 
-out_dir <- './msparams/p_space_v2/'
+out_dir <- './msparams/p_space_v3/'
 
 n_realisations <- 5e+5
 
@@ -55,7 +56,7 @@ synthetic_params <- data.frame(
 
 node_map <- rep(1:nodes, each=nodes, length.out=n_realisations)
 
-write_out <- function(splits, name) {
+write_out_splits <- function(splits, name) {
   for (i in seq(nodes)) {
     write.csv(
       splits[[i]],
@@ -65,36 +66,28 @@ write_out <- function(splits, name) {
   }
 }
 
-sample_nrows <- function(df, n) df[sample(nrow(df), n, replace = TRUE),]
+write_out <- function(data, name) {
+  write.csv(
+    data,
+    file.path(out_dir, paste0('p_space_', name, '.csv')),
+    row.names = FALSE
+  )
+}
 
-write_out(split(synthetic_params, node_map), 'synthetic')
-write_out(split(sample_nrows(seasonality, n_realisations), node_map), 'season')
-write_out(
-  split(sample_nrows(as.data.frame(vector_profiles), n_realisations), node_map),
-  'vectors'
-)
+write_out_splits(split(synthetic_params, node_map), 'synthetic')
+write_out_splits(split(sample.int(dim(history)[[1]], n_realisations, replace=TRUE), node_map), 'location')
+write_out(seasonality, 'season')
+write_out(as.data.frame(vector_profiles), 'vectors')
 
 write_out(
-  split(
-    sample_nrows(
-      data.frame(total_M = history[c('total_M')]),
-      n_realisations
-    ),
-    node_map
-  ),
-  'total_M'
+  history[c('NAME_0', 'NAME_1', 'ur', 'total_M')],
+  'basics'
 )
 
 i_names <- c('tx', 'prop_act', 'llin', 'irs', 'irs_rounds', 'smc_rounds', 'rtss')
 for (i_name in i_names) {
   write_out(
-    split(
-      sample_nrows(
-        cast_intervention_history(interventions, i_name),
-        n_realisations
-      ),
-      node_map
-    ),
+    cast_intervention_history(interventions, i_name),
     i_name
   )
 }
