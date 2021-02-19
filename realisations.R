@@ -6,13 +6,20 @@ in_dir <- args[2]
 out_dir <- args[3]
 numCores <- args[4]
 lib <- args[5]
+batch_size <- 50
 
-params <- cbind(
+interventions <- cbind(
   read.csv(file.path(in_dir, paste0('p_space_synthetic_', node, '.csv'))),
-  read.csv(file.path(in_dir, paste0('p_space_season_', node, '.csv'))),
-  read.csv(file.path(in_dir, paste0('p_space_vectors_', node, '.csv'))),
-  read.csv(file.path(in_dir, paste0('p_space_total_M_', node, '.csv')))
+  read.csv(file.path(in_dir, paste0('p_space_location_', node, '.csv')))
 )
+
+locations <- cbind(
+  read.csv(file.path(in_dir, paste0('p_space_season.csv'))),
+  read.csv(file.path(in_dir, paste0('p_space_vectors.csv'))),
+  read.csv(file.path(in_dir, paste0('p_space_basics.csv')))
+)
+
+params <- merge(interventions, locations, by.x = 'x', by.y = 0)
 
 # setup cluster...
 cl <- makeCluster(numCores)
@@ -35,7 +42,7 @@ clusterEvalQ(cl, {
         human_population = population,
         variety_proportions = 1,
         average_age = row$average_age,
-        total_M = population * row$x,
+        total_M = population * row$total_M,
         model_seasonality = TRUE,
         g0 = row$seasonal_a0,
         g = as.numeric(row[c('seasonal_a1', 'seasonal_a2', 'seasonal_a3')]),
@@ -100,7 +107,7 @@ clusterEvalQ(cl, {
     }
     
     if (row$smc_rounds_per_year > 0) {
-      simparams <- set_mda(
+      simparams <- set_smc(
         simparams,
         drug = 3,
         start = 0 + peak - 3 * month,
@@ -141,21 +148,33 @@ clusterEvalQ(cl, {
   }
 })
 
-# do the work
-results <- do.call(
-  'rbind',
-  parLapply(
-    cl,
-    X = seq(nrow(params)),
-    f = function (i) process_row(params[i,], i)
-  )
+batches <- split(
+  seq(nrow(params)),
+  (seq(nrow(params))-1) %/% batch_size
 )
+
+for (batch_i in seq_along(batches)) {
+  start_time <- Sys.time()
+  # do the work
+  results <- do.call(
+    'rbind',
+    parLapply(
+      cl,
+      X = batches[[batch_i]],
+      f = function (i) process_row(params[i,], i)
+    )
+  )
+  
+  write.csv(
+    results,
+    file.path(out_dir, paste0('realisation_', node, '_batch_', batch_i, '.csv')),
+    row.names = FALSE
+  )
+  print(paste0('batch ', batch_i, ' completed'))
+  print(Sys.time())
+  print(Sys.time() - start_time)
+}
+
 
 stopCluster(cl)
-
-write.csv(
-  results,
-  file.path(out_dir, paste0('realisation_', node, '.csv')),
-  row.names = FALSE
-)
 
