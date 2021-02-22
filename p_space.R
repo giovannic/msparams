@@ -80,7 +80,7 @@ write_out(seasonality, 'season')
 write_out(as.data.frame(vector_profiles), 'vectors')
 
 write_out(
-  history[c('NAME_0', 'NAME_1', 'ur', 'total_M')],
+  history[c('Continent', 'NAME_0', 'NAME_1', 'ur', 'total_M')],
   'basics'
 )
 

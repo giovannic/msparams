@@ -4,9 +4,10 @@ args = commandArgs(trailingOnly=TRUE)
 node <- args[1]
 in_dir <- args[2]
 out_dir <- args[3]
-numCores <- args[4]
-lib <- args[5]
+lib <- args[4]
 batch_size <- 50
+
+print(paste0('beginning node ', node))
 
 interventions <- cbind(
   read.csv(file.path(in_dir, paste0('p_space_synthetic_', node, '.csv'))),
@@ -22,7 +23,7 @@ locations <- cbind(
 params <- merge(interventions, locations, by.x = 'x', by.y = 0)
 
 # setup cluster...
-cl <- makeCluster(numCores)
+cl <- makeCluster(detectCores())
 clusterExport(cl, "params")
 clusterExport(cl, "lib")
 
@@ -155,6 +156,7 @@ batches <- split(
 
 for (batch_i in seq_along(batches)) {
   start_time <- Sys.time()
+  print(paste0('node ', node, ' batch ', batch_i, ' starting'))
   # do the work
   results <- do.call(
     'rbind',
@@ -170,7 +172,7 @@ for (batch_i in seq_along(batches)) {
     file.path(out_dir, paste0('realisation_', node, '_batch_', batch_i, '.csv')),
     row.names = FALSE
   )
-  print(paste0('batch ', batch_i, ' completed'))
+  print(paste0('node ', node, ' batch ', batch_i, ' completed'))
   print(Sys.time())
   print(Sys.time() - start_time)
 }
