@@ -4,6 +4,7 @@ out_dir <- './msparams/p_space_v3/'
 
 n_realisations <- 5e+5
 
+set.seed(42)
 print('runtime (days)')
 runtime <- 4 #mins
 cores <- 8
