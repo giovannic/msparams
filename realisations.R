@@ -43,7 +43,8 @@ clusterEvalQ(cl, {
         human_population = population,
         variety_proportions = 1,
         average_age = row$average_age,
-        total_M = population * row$total_M,
+        total_M = ceiling(population * row$total_M),
+        mosquito_limit = ceiling(population * row$total_M * 10),
         model_seasonality = TRUE,
         g0 = row$seasonal_a0,
         g = as.numeric(row[c('seasonal_a1', 'seasonal_a2', 'seasonal_a3')]),
@@ -139,6 +140,7 @@ clusterEvalQ(cl, {
       correlations$inter_intervention_rho('bednets', 'spraying', row$spraying_net_correlation)
     }
     
+    set.seed(42)
     output <- run_simulation(
       sim_length,
       simparams,
